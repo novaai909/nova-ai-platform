@@ -1,0 +1,399 @@
+
+import streamlit as st
+import fitz
+from google import genai
+from supabase import create_client
+
+st.set_page_config(
+    page_title="NOVA AI",
+    page_icon="🚀",
+    layout="centered"
+)
+
+st.title("🚀 NOVA AI")
+st.caption("Your Smart AI Assistant")
+
+# ---------- CONNECTIONS ----------
+try:
+    supabase = create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"]
+    )
+    gemini = genai.Client(
+        api_key=st.secrets["GEMINI_API_KEY"]
+    )
+except Exception as e:
+    st.error("Connection settings check karo.")
+    st.stop()
+
+MODEL = "gemini-3.8-flash"
+
+# ---------- SESSION ----------
+defaults = {
+    "access_token": None,
+    "refresh_token": None,
+    "messages": [],
+    "user_id": None
+}
+
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
+
+# ---------- RESTORE LOGIN ----------
+user = None
+
+if st.session_state.access_token:
+    try:
+        session = supabase.auth.set_session(
+            st.session_state.access_token,
+            st.session_state.refresh_token
+        )
+        st.session_state.access_token = session.access_token
+        st.session_state.refresh_token = session.refresh_token
+
+        user = supabase.auth.get_user().user
+    except Exception:
+        st.session_state.access_token = None
+        st.session_state.refresh_token = None
+
+# ---------- LOGIN / SIGNUP ----------
+if not user:
+
+    login_tab, signup_tab = st.tabs(
+        ["Login", "Sign Up"]
+    )
+
+    with login_tab:
+        st.subheader("Welcome Back")
+
+        email = st.text_input("Email", key="login_email")
+        password = st.text_input(
+            "Password",
+            type="password",
+            key="login_password"
+        )
+
+        if st.button("Login", use_container_width=True):
+            try:
+                result = supabase.auth.sign_in_with_password({
+                    "email": email,
+                    "password": password
+                })
+
+                st.session_state.access_token = (
+                    result.session.access_token
+                )
+                st.session_state.refresh_token = (
+                    result.session.refresh_token
+                )
+                st.session_state.messages = []
+                st.rerun()
+
+            except Exception:
+                st.error("Login failed. Email aur password check karo.")
+
+    with signup_tab:
+        st.subheader("Create Your Account")
+
+        new_email = st.text_input(
+            "Your Email",
+            key="signup_email"
+        )
+        new_password = st.text_input(
+            "Create Password",
+            type="password",
+            key="signup_password"
+        )
+
+        if st.button("Create Account", use_container_width=True):
+            if len(new_password) < 8:
+                st.warning("Password kam se kam 8 characters ka rakho.")
+            else:
+                try:
+                    result = supabase.auth.sign_up({
+                        "email": new_email,
+                        "password": new_password
+                    })
+
+                    if result.session:
+                        st.session_state.access_token = (
+                            result.session.access_token
+                        )
+                        st.session_state.refresh_token = (
+                            result.session.refresh_token
+                        )
+                        st.rerun()
+                    else:
+                        st.success(
+                            "Account created! Email check karo "
+                            "aur verification ke baad Login karo."
+                        )
+
+                except Exception:
+                    st.error(
+                        "Signup failed. Email check karo "
+                        "ya doosra email try karo."
+                    )
+
+    st.stop()
+
+# ---------- LOGGED IN USER ----------
+user_id = user.id
+
+st.success(f"Welcome to NOVA AI, {user.email}!")
+
+if st.button("Logout"):
+    try:
+        supabase.auth.sign_out()
+    except Exception:
+        pass
+
+    st.session_state.access_token = None
+    st.session_state.refresh_token = None
+    st.session_state.messages = []
+    st.rerun()
+
+# ---------- MEMORY FUNCTIONS ----------
+def get_memories():
+    return (
+        supabase.table("memories")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+def save_memory(content, memory_type="manual"):
+    content = content.strip()
+
+    if not content:
+        return False
+
+    try:
+        existing = (
+            supabase.table("memories")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("content", content)
+            .execute()
+            .data
+        )
+
+        if existing:
+            return True
+
+        supabase.table("memories").insert({
+            "user_id": user_id,
+            "content": content,
+            "memory_type": memory_type
+        }).execute()
+
+        return True
+
+    except Exception as e:
+        st.error(f"Memory save error: {e}")
+        return False
+
+# ---------- MEMORY PAGE ----------
+with st.expander("🧠 NOVA Smart Memory"):
+
+    st.write("Your personal memories")
+
+    manual_text = st.text_area(
+        "What should NOVA remember?",
+        key="manual_memory"
+    )
+
+    if st.button("💾 Remember This"):
+        if save_memory(manual_text, "manual"):
+            st.success("Memory saved!")
+            st.rerun()
+
+    st.divider()
+
+    try:
+        memories = get_memories()
+
+        if not memories:
+            st.info("Abhi koi memory saved nahi hai.")
+
+        for memory in memories:
+            with st.container(border=True):
+                st.write(memory["content"])
+                st.caption(
+                    "Type: " + memory["memory_type"]
+                )
+
+                if st.button(
+                    "Delete",
+                    key="delete_" + memory["id"]
+                ):
+                    supabase.table("memories").delete().eq(
+                        "id", memory["id"]
+                    ).eq("user_id", user_id).execute()
+
+                    st.rerun()
+
+    except Exception as e:
+        st.error(f"Memory loading error: {e}")
+
+# ---------- AUTOMATIC MEMORY ----------
+def detect_memory(question):
+    text = question.strip()
+    lower = text.lower()
+
+    triggers = [
+        "remember that ",
+        "remember this ",
+        "my name is ",
+        "i am ",
+        "i like ",
+        "i love ",
+        "i prefer ",
+        "mera naam ",
+        "mujhe pasand ",
+        "yaad rakhna "
+    ]
+
+    if any(lower.startswith(x) for x in triggers):
+        save_memory(text, "automatic")
+
+# ---------- AI MODE ----------
+mode = st.radio(
+    "Choose your mode:",
+    ["💬 General Chat", "📄 PDF Assistant"],
+    horizontal=False
+)
+
+if st.button("Clear Chat"):
+    st.session_state.messages = []
+    st.rerun()
+
+# ---------- PDF UPLOAD ----------
+pdf_text = ""
+
+if mode == "📄 PDF Assistant":
+    uploaded_file = st.file_uploader(
+        "Upload your PDF",
+        type=["pdf"]
+    )
+
+    if uploaded_file:
+        try:
+            pdf = fitz.open(
+                stream=uploaded_file.getvalue(),
+                filetype="pdf"
+            )
+
+            st.success(
+                f"PDF loaded! Total pages: {len(pdf)}"
+            )
+
+            for page_number, page in enumerate(pdf):
+                pdf_text += (
+                    f"\n[Page {page_number + 1}]\n"
+                    f"{page.get_text()}\n"
+                )
+
+            if len(pdf_text) > 60000:
+                pdf_text = pdf_text[:60000]
+                st.warning("PDF text limited to 60,000 characters.")
+
+        except Exception as e:
+            st.error(f"PDF read error: {e}")
+
+# ---------- SHOW CHAT ----------
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# ---------- CHAT ----------
+question = st.chat_input("Ask NOVA AI anything...")
+
+if question:
+
+    if mode == "📄 PDF Assistant" and not pdf_text:
+        st.warning("Pehle ek PDF upload karo.")
+
+    else:
+        st.session_state.messages.append({
+            "role": "user",
+            "content": question
+        })
+
+        detect_memory(question)
+
+        with st.chat_message("user"):
+            st.markdown(question)
+
+        try:
+            with st.chat_message("assistant"):
+                with st.spinner("NOVA AI is thinking..."):
+
+                    if mode == "📄 PDF Assistant":
+                        prompt = f"""
+You are NOVA AI, a helpful PDF assistant.
+
+Answer using the provided PDF.
+Mention page numbers when possible.
+If the answer is not in the PDF, say so honestly.
+
+PDF:
+{pdf_text}
+
+Question:
+{question}
+"""
+
+                    else:
+                        memories = get_memories()
+
+                        memory_context = "\n".join(
+                            item["content"] for item in memories
+                        )
+
+                        history = st.session_state.messages[-11:-1]
+
+                        conversation = "\n".join(
+                            f'{item["role"]}: {item["content"]}'
+                            for item in history
+                        )
+
+                        prompt = f"""
+You are NOVA AI, a friendly intelligent assistant.
+Answer in Hindi or English according to the user.
+
+User's saved memories:
+{memory_context}
+
+Previous conversation:
+{conversation}
+
+User: {question}
+NOVA AI:
+"""
+
+                    response = gemini.models.generate_content(
+                        model=MODEL,
+                        contents=prompt
+                    )
+
+                    answer = response.text or (
+                        "Sorry, I could not generate an answer."
+                    )
+
+                    st.markdown(answer)
+
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": answer
+            })
+
+        except Exception as e:
+            st.error("AI connection error. Please try again.")
+            st.caption(str(e))
+
+st.divider()
+st.caption("NOVA AI | Building the future of intelligence 🚀")
