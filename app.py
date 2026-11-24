@@ -1,9 +1,11 @@
 
 import streamlit as st
 import fitz
+import json
+import uuid
+from datetime import datetime
 from google import genai
-from supabase import create_client, AuthClientOptions
-from streamlit_cookies_manager import EncryptedCookieManager
+from streamlit_local_storage import LocalStorage
 
 # ==========================================
 # PAGE CONFIG
@@ -16,396 +18,71 @@ st.set_page_config(
 )
 
 # ==========================================
-# COOKIE MANAGER
-# ==========================================
-
-try:
-    COOKIES_PASSWORD = st.secrets["COOKIES_PASSWORD"]
-except Exception:
-    st.error("COOKIES_PASSWORD missing in Streamlit Secrets.")
-    st.stop()
-
-cookies = EncryptedCookieManager(
-    prefix="nova-ai-auth/",
-    password=COOKIES_PASSWORD
-)
-
-if not cookies.ready():
-    st.info("Loading secure login storage...")
-    st.stop()
-
-
-# ==========================================
-# SECRETS
+# GEMINI API
 # ==========================================
 
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-    SUPABASE_URL = st.secrets["SUPABASE_URL"]
-    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 except Exception:
-    st.error("Please check your API settings in Streamlit Secrets.")
+    st.error("GEMINI_API_KEY missing in Streamlit Secrets.")
     st.stop()
 
-APP_URL = (
-    "https://nova-ai-platform-vdmjwhqww8hoczjust8oac.streamlit.app"
-)
-
+gemini = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==========================================
-# SESSION STATE
+# BROWSER LOCAL STORAGE
 # ==========================================
 
-defaults = {
-    "access_token": None,
-    "refresh_token": None,
-    "user_id": None,
-    "user_email": None,
-    "messages": [],
-    "pdf_text": "",
-    "supabase_client": None,
-    "supabase_client_version": None,
-    "gemini_client": None,
-    "google_oauth_url": None,
-    "auth_memory_storage": {}
-}
+localS = LocalStorage()
+STORAGE_KEY = "nova_ai_saved_data"
 
-for key, value in defaults.items():
-    if key not in st.session_state:
-        st.session_state[key] = value
-
-
-# ==========================================
-# CUSTOM SUPABASE STORAGE
-# ==========================================
-
-class StreamlitAuthStorage:
-    """
-    Save PKCE verifier in encrypted browser cookies.
-    Keep other Supabase auth data in Streamlit session state.
-    """
-
-    def __init__(self, cookie_manager):
-        self.cookies = cookie_manager
-
-        if "auth_memory_storage" not in st.session_state:
-            st.session_state.auth_memory_storage = {}
-
-    def get_item(self, key):
-        if key.endswith("-code-verifier"):
-            return self.cookies.get(key)
-
-        return st.session_state.auth_memory_storage.get(key)
-
-    def set_item(self, key, value):
-        if key.endswith("-code-verifier"):
-            self.cookies[key] = value
-            self.cookies.save()
-        else:
-            st.session_state.auth_memory_storage[key] = value
-
-    def remove_item(self, key):
-        if key.endswith("-code-verifier"):
-            if key in self.cookies:
-                del self.cookies[key]
-                self.cookies.save()
-        else:
-            st.session_state.auth_memory_storage.pop(key, None)
-
-
-auth_storage = StreamlitAuthStorage(cookies)
-
-
-# ==========================================
-# CLIENTS
-# ==========================================
-
-if st.session_state.supabase_client_version != "pkce-cookie-v1":
-
-    st.session_state.supabase_client = create_client(
-        SUPABASE_URL,
-        SUPABASE_KEY,
-        auth=AuthClientOptions(
-            flow_type="pkce",
-            session_storage=auth_storage
-        )
+if "storage_loaded" not in st.session_state:
+    saved_data = localS.getItem(
+        STORAGE_KEY,
+        key="nova_ai_initial_load"
     )
 
-    st.session_state.supabase_client_version = "pkce-cookie-v1"
+    if isinstance(saved_data, str):
+        try:
+            saved_data = json.loads(saved_data)
+        except Exception:
+            saved_data = {}
 
-supabase = st.session_state.supabase_client
+    if not isinstance(saved_data, dict):
+        saved_data = {}
 
-if st.session_state.gemini_client is None:
-    st.session_state.gemini_client = genai.Client(
-        api_key=GEMINI_API_KEY
-    )
+    st.session_state.messages = saved_data.get("messages", [])
+    st.session_state.memories = saved_data.get("memories", [])
+    st.session_state.storage_loaded = True
 
-gemini = st.session_state.gemini_client
-
-
-# ==========================================
-# SESSION HELPERS
-# ==========================================
-
-def save_session(session):
-    if not session:
-        return False
-
-    try:
-        user_response = supabase.auth.get_user(
-            session.access_token
-        )
-
-        user = user_response.user
-
-        if not user:
-            return False
-
-        st.session_state.access_token = session.access_token
-        st.session_state.refresh_token = session.refresh_token
-        st.session_state.user_id = user.id
-        st.session_state.user_email = user.email
-
-        return True
-
-    except Exception:
-        return False
-
-
-def clear_session():
-    try:
-        supabase.auth.sign_out()
-    except Exception:
-        pass
-
-    st.session_state.access_token = None
-    st.session_state.refresh_token = None
-    st.session_state.user_id = None
-    st.session_state.user_email = None
+if "messages" not in st.session_state:
     st.session_state.messages = []
+
+if "memories" not in st.session_state:
+    st.session_state.memories = []
+
+if "pdf_text" not in st.session_state:
     st.session_state.pdf_text = ""
 
-
-def restore_session():
-    access = st.session_state.access_token
-    refresh = st.session_state.refresh_token
-
-    if access and refresh:
-        try:
-            response = supabase.auth.set_session(
-                access,
-                refresh
-            )
-
-            if response.session:
-                return save_session(response.session)
-
-        except Exception:
-            clear_session()
-
-    return False
-
-
 # ==========================================
-# GOOGLE OAUTH CALLBACK
+# SAVE DATA
 # ==========================================
 
-oauth_error = st.query_params.get("error_description")
-oauth_code = st.query_params.get("code")
+def save_browser_data():
+    data = {
+        "messages": st.session_state.messages,
+        "memories": st.session_state.memories
+    }
 
-if oauth_error:
-    st.error("Google Login error: " + str(oauth_error))
-    st.query_params.clear()
-
-elif oauth_code and not st.session_state.user_id:
-
-    try:
-        response = supabase.auth.exchange_code_for_session(
-            {"auth_code": oauth_code}
-        )
-
-        if save_session(response.session):
-            st.session_state.google_oauth_url = None
-            st.query_params.clear()
-            st.success("Google Login successful!")
-            st.rerun()
-        else:
-            st.error("Google login session could not be created.")
-            st.query_params.clear()
-
-    except Exception as e:
-        st.error("Google Login failed: " + str(e))
-        st.info(
-            "Please start a completely new Google Login. "
-            "Do not reuse an old callback URL."
-        )
-        st.query_params.clear()
-
-
-# Restore existing login
-if not st.session_state.user_id:
-    restore_session()
-
-
-# ==========================================
-# PAGE HEADER
-# ==========================================
-
-st.title("✨ NOVA AI")
-st.caption("Your Personal AI Assistant")
-
-
-# ==========================================
-# AUTH SCREEN
-# ==========================================
-
-if not st.session_state.user_id:
-
-    st.subheader("Welcome to NOVA AI")
-
-    login_tab, signup_tab = st.tabs(
-        ["Login", "Sign Up"]
+    localS.setItem(
+        STORAGE_KEY,
+        json.dumps(data, ensure_ascii=False)
     )
-
-    with login_tab:
-
-        email = st.text_input(
-            "Email address",
-            key="login_email"
-        )
-
-        password = st.text_input(
-            "Password",
-            type="password",
-            key="login_password"
-        )
-
-        if st.button("Login", use_container_width=True):
-
-            try:
-                response = supabase.auth.sign_in_with_password({
-                    "email": email.strip(),
-                    "password": password
-                })
-
-                if save_session(response.session):
-                    st.success("Login successful!")
-                    st.rerun()
-                else:
-                    st.error("Login session could not be created.")
-
-            except Exception as e:
-                st.error("Login failed: " + str(e))
-
-
-    with signup_tab:
-
-        new_email = st.text_input(
-            "Email address",
-            key="signup_email"
-        )
-
-        new_password = st.text_input(
-            "Create password",
-            type="password",
-            key="signup_password"
-        )
-
-        if st.button("Create Account", use_container_width=True):
-
-            try:
-                response = supabase.auth.sign_up({
-                    "email": new_email.strip(),
-                    "password": new_password
-                })
-
-                if response.session and save_session(response.session):
-                    st.success("Account created!")
-                    st.rerun()
-                else:
-                    st.success(
-                        "Account created. Please verify your email "
-                        "and then log in."
-                    )
-
-            except Exception as e:
-                st.error("Sign Up failed: " + str(e))
-
-
-    st.divider()
-    st.subheader("Or continue with Google")
-
-    if st.button(
-        "Continue with Google",
-        use_container_width=True
-    ):
-
-        try:
-            response = supabase.auth.sign_in_with_oauth({
-                "provider": "google",
-                "options": {
-                    "redirect_to": APP_URL
-                }
-            })
-
-            if response.url:
-                st.session_state.google_oauth_url = response.url
-
-                # Save the PKCE verifier before opening Google.
-                cookies.save()
-
-                st.rerun()
-
-            else:
-                st.error("Google login URL was not generated.")
-
-        except Exception as e:
-            st.error("Google Login could not start: " + str(e))
-
-
-    if st.session_state.google_oauth_url:
-        st.link_button(
-            "Open Google Login",
-            st.session_state.google_oauth_url,
-            use_container_width=True
-        )
-
-    st.stop()
-
-
-# ==========================================
-# LOGGED-IN USER
-# ==========================================
-
-st.sidebar.success(
-    "Logged in: " + str(st.session_state.user_email)
-)
-
-if st.sidebar.button("Logout", use_container_width=True):
-    clear_session()
-    st.rerun()
 
 
 # ==========================================
 # MEMORY FUNCTIONS
 # ==========================================
-
-def load_memories():
-    try:
-        result = (
-            supabase.table("memories")
-            .select("id, content, memory_type, created_at")
-            .eq("user_id", st.session_state.user_id)
-            .order("created_at", desc=True)
-            .execute()
-        )
-
-        return result.data or []
-
-    except Exception as e:
-        st.error("Could not load memories: " + str(e))
-        return []
-
 
 def save_memory(content, memory_type="manual"):
     content = content.strip()
@@ -413,83 +90,96 @@ def save_memory(content, memory_type="manual"):
     if not content:
         return False
 
-    try:
-        supabase.table("memories").insert({
-            "user_id": st.session_state.user_id,
-            "content": content,
-            "memory_type": memory_type
-        }).execute()
+    # Avoid duplicate memories
+    for memory in st.session_state.memories:
+        if memory.get("content", "").lower() == content.lower():
+            return False
 
-        return True
+    st.session_state.memories.insert(0, {
+        "id": str(uuid.uuid4()),
+        "content": content,
+        "memory_type": memory_type,
+        "created_at": datetime.now().isoformat()
+    })
 
-    except Exception as e:
-        st.error("Memory save failed: " + str(e))
-        return False
+    save_browser_data()
+    return True
+
+
+def delete_memory(memory_id):
+    st.session_state.memories = [
+        memory for memory in st.session_state.memories
+        if memory.get("id") != memory_id
+    ]
+    save_browser_data()
 
 
 # ==========================================
-# SIDEBAR MEMORY
+# HEADER
 # ==========================================
 
-st.sidebar.divider()
-st.sidebar.subheader("🧠 My Memories")
+st.title("✨ NOVA AI")
+st.caption("Your Personal AI Assistant • Always Here for You")
 
-memory_input = st.sidebar.text_area(
-    "What should NOVA remember?",
-    key="new_memory"
-)
+# ==========================================
+# SIDEBAR
+# ==========================================
 
-if st.sidebar.button("Save Memory"):
+with st.sidebar:
 
-    if save_memory(memory_input):
-        st.sidebar.success("Memory saved!")
+    st.title("🧠 NOVA Memory")
+
+    st.caption("NOVA can remember important things about you.")
+
+    memory_input = st.text_area(
+        "What should NOVA remember?",
+        placeholder="Example: I love learning new technology."
+    )
+
+    if st.button("Save Memory", use_container_width=True):
+        if save_memory(memory_input):
+            st.success("Memory saved!")
+            st.rerun()
+        else:
+            st.info("This memory is empty or already saved.")
+
+    st.divider()
+    st.subheader("Your Saved Memories")
+
+    if st.session_state.memories:
+        for memory in st.session_state.memories:
+
+            with st.expander(
+                memory.get("content", "Saved memory")[:45]
+            ):
+                st.write(memory.get("content", ""))
+
+                if st.button(
+                    "Delete Memory",
+                    key="delete_" + memory["id"]
+                ):
+                    delete_memory(memory["id"])
+                    st.rerun()
+    else:
+        st.caption("No memories saved yet.")
+
+    st.divider()
+
+    if st.button("Clear Chat History", use_container_width=True):
+        st.session_state.messages = []
+        save_browser_data()
         st.rerun()
 
-
-memories = load_memories()
-
-if memories:
-
-    for memory in memories:
-
-        with st.sidebar.expander(
-            str(memory.get("content", ""))[:45]
-        ):
-
-            st.write(memory.get("content", ""))
-
-            if st.button(
-                "Delete this memory",
-                key="delete_" + str(memory["id"])
-            ):
-
-                try:
-                    (
-                        supabase.table("memories")
-                        .delete()
-                        .eq("id", memory["id"])
-                        .eq("user_id", st.session_state.user_id)
-                        .execute()
-                    )
-
-                    st.rerun()
-
-                except Exception as e:
-                    st.error("Delete failed: " + str(e))
-
-else:
-    st.sidebar.caption("No saved memories yet.")
-
+    st.caption("Memories remain saved when chat history is cleared.")
 
 # ==========================================
-# AI CHAT / PDF TABS
+# TABS
 # ==========================================
 
 chat_tab, pdf_tab = st.tabs([
     "💬 AI Chat",
     "📄 PDF Assistant"
 ])
-
 
 # ==========================================
 # AI CHAT
@@ -500,10 +190,8 @@ with chat_tab:
     st.subheader("Chat with NOVA")
 
     for message in st.session_state.messages:
-
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-
 
     prompt = st.chat_input("Ask NOVA anything...")
 
@@ -514,32 +202,35 @@ with chat_tab:
             "content": prompt
         })
 
+        save_browser_data()
+
         with st.chat_message("user"):
             st.markdown(prompt)
 
-
-        current_memories = load_memories()
-
+        # Prepare memory context
         memory_context = "\n".join(
-            [m["content"] for m in current_memories]
+            memory["content"]
+            for memory in st.session_state.memories
         )
 
-        history = st.session_state.messages[-12:]
+        # Use recent conversation for context
+        history = st.session_state.messages[-20:]
 
         conversation = "\n".join(
-            [
-                f'{m["role"].upper()}: {m["content"]}'
-                for m in history
-            ]
+            f'{m["role"].upper()}: {m["content"]}'
+            for m in history
         )
 
         system_prompt = (
-            "You are NOVA AI, a helpful personal assistant. "
-            "Use the user's saved memories only when relevant. "
-            "Do not claim to remember things that are not provided.\n\n"
+            "You are NOVA AI, a friendly and helpful personal assistant. "
+            "You can speak naturally in the language the user uses. "
+            "Use saved memories when relevant. "
+            "Never pretend to remember information that is not provided. "
+            "If the user asks you to remember something, acknowledge it. "
+            "Do not claim a memory was saved unless the app confirms it.\n\n"
             "USER MEMORIES:\n"
             + memory_context
-            + "\n\nCONVERSATION:\n"
+            + "\n\nRECENT CONVERSATION:\n"
             + conversation
         )
 
@@ -561,13 +252,14 @@ with chat_tab:
 
                     st.markdown(answer)
 
-
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": answer
             })
 
+            save_browser_data()
 
+            # Automatic memory trigger
             lower_prompt = prompt.lower()
 
             triggers = [
@@ -578,14 +270,13 @@ with chat_tab:
                 "याद रखना"
             ]
 
-            if any(t in lower_prompt for t in triggers):
+            if any(trigger in lower_prompt for trigger in triggers):
 
                 if save_memory(prompt, "automatic"):
-                    st.toast("NOVA saved this memory.")
+                    st.toast("🧠 NOVA saved this memory!")
 
         except Exception as e:
             st.error("Gemini error: " + str(e))
-
 
 # ==========================================
 # PDF ASSISTANT
@@ -617,7 +308,8 @@ with pdf_tab:
             if not extracted_text.strip():
 
                 st.warning(
-                    "No readable text found. This may be a scanned PDF."
+                    "No readable text found. "
+                    "This may be a scanned PDF."
                 )
 
             else:
@@ -628,12 +320,10 @@ with pdf_tab:
         except Exception as e:
             st.error("PDF reading failed: " + str(e))
 
-
     if st.session_state.pdf_text:
 
         st.caption(
-            f"Extracted text: "
-            f"{len(st.session_state.pdf_text)} characters"
+            f"Extracted text: {len(st.session_state.pdf_text)} characters"
         )
 
         pdf_question = st.text_input(
@@ -648,17 +338,13 @@ with pdf_tab:
 
                     with st.spinner("Reading your PDF..."):
 
-                        pdf_context = (
-                            st.session_state.pdf_text[:80000]
-                        )
-
                         result = gemini.models.generate_content(
                             model="gemini-2.5-flash",
                             contents=(
                                 "Answer the question using the PDF text. "
                                 "If the answer is not in the PDF, say so.\n\n"
                                 "PDF TEXT:\n"
-                                + pdf_context
+                                + st.session_state.pdf_text[:80000]
                                 + "\n\nQUESTION:\n"
                                 + pdf_question
                             )
@@ -670,11 +356,13 @@ with pdf_tab:
                 except Exception as e:
                     st.error("PDF Assistant error: " + str(e))
 
-
         if st.button("Clear PDF"):
             st.session_state.pdf_text = ""
             st.rerun()
 
+# ==========================================
+# FOOTER
+# ==========================================
 
 st.divider()
-st.caption("NOVA AI • Your Personal AI Assistant")
+st.caption("NOVA AI • Your Personal AI Assistant ✨")
