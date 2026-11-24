@@ -237,9 +237,9 @@ with chat_tab:
 
                 with st.spinner("NOVA is thinking..."):
 
-                    result = gemini.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=system_prompt
+                   result = gemini.models.generate_content(
+                        model="gemini-3.8-flash",
+                         contents=system_prompt
                     )
 
                     answer = (
