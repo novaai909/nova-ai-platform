@@ -1,4 +1,6 @@
+
 streamlit
 PyMuPDF
 google-genai
-supabase
+supabase>=2.0.0
+
