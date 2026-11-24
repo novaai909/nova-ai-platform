@@ -2,6 +2,6 @@
 streamlit
 PyMuPDF
 google-genai
-supabase==2.15.3
+supabase==2.34.1
 streamlit-cookies-manager
 
