@@ -1,8 +1,7 @@
-
 import streamlit as st
 import fitz
 from google import genai
-from supabase import create_client, AuthClientOptions
+from supabase import create_client 
 
 # ==========================================
 # PAGE
