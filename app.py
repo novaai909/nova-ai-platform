@@ -336,7 +336,7 @@ with pdf_tab:
                     with st.spinner("Reading your PDF..."):
 
                         result = gemini.models.generate_content(
-                            model="gemini-2.5-flash",
+                            model="gemini-3.8-flash",
                             contents=(
                                 "Answer the question using the PDF text. "
                                 "If the answer is not in the PDF, say so.\n\n"
