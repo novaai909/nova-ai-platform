@@ -37,10 +37,7 @@ localS = LocalStorage()
 STORAGE_KEY = "nova_ai_saved_data"
 
 if "storage_loaded" not in st.session_state:
-    saved_data = localS.getItem(
-        STORAGE_KEY,
-        key="nova_ai_initial_load"
-    )
+    saved_data = localS.getItem(STORAGE_KEY)
 
     if isinstance(saved_data, str):
         try:
