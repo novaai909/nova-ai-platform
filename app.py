@@ -34,8 +34,7 @@ from openai import OpenAI
 openai_client = OpenAI(
     api_key=st.secrets["OPENAI_API_KEY"]
 )
-#
-========================================== 
+# ========================================== 
 # GEMINI AUTO FALLBACK
 # ==========================================
 
