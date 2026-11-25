@@ -28,7 +28,37 @@ except Exception:
     st.stop()
 
 gemini = genai.Client(api_key=GEMINI_API_KEY)
+# ==========================================
+# GEMINI AUTO FALLBACK
+# ==========================================
 
+GEMINI_MODELS = [
+    "gemini-3.8-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+]
+
+def generate_with_fallback(contents):
+    errors = []
+
+    for model_name in GEMINI_MODELS:
+        try:
+            result = gemini.models.generate_content(
+                model=model_name,
+                contents=contents
+            )
+
+            if result.text:
+                return result.text
+
+            errors.append(f"{model_name}: Empty response")
+
+        except Exception as e:
+            errors.append(f"{model_name}: {str(e)}")
+
+    raise RuntimeError(
+        "All Gemini models failed. " + " | ".join(errors)
+    )
 # ==========================================
 # BROWSER LOCAL STORAGE
 # ==========================================
@@ -218,7 +248,7 @@ with chat_tab:
 
         system_prompt = (
             "You are NOVA AI, a friendly and helpful personal assistant. "
-            "You can speak naturally in the language the user uses. "
+            "Speak naturally in the language the user uses. "
             "Use saved memories when relevant. "
             "Never pretend to remember information that is not provided. "
             "If the user asks you to remember something, acknowledge it. "
@@ -235,14 +265,8 @@ with chat_tab:
 
                 with st.spinner("NOVA is thinking..."):
 
-                    result = gemini.models.generate_content(
-                        model="gemini-3.5-flash-lite",
-                        contents=system_prompt
-                    )
-
-                    answer = (
-                        result.text
-                        or "I could not generate a response."
+                    answer = generate_with_fallback(
+                        system_prompt
                     )
 
                     st.markdown(answer)
@@ -271,7 +295,12 @@ with chat_tab:
 
         except Exception as e:
 
-            st.error("Gemini error: " + str(e))
+            st.error(
+                "NOVA could not respond right now. "
+                "Please try again later."
+            )
+
+            st.caption(str(e))
 # ==========================================
 # PDF ASSISTANT
 # ==========================================
@@ -290,7 +319,7 @@ with pdf_tab:
         try:
 
             document = fitz.open(
-                stream=uploaded_pdf.getvalue(),
+                stream=uploaded_pdf.read(),
                 filetype="pdf"
             )
 
@@ -310,11 +339,15 @@ with pdf_tab:
 
                 st.session_state.pdf_text = extracted_text
 
-                st.success("PDF uploaded and text extracted.")
+                st.success(
+                    "PDF uploaded and text extracted."
+                )
 
         except Exception as e:
 
-            st.error("PDF reading failed: " + str(e))
+            st.error(
+                "PDF reading failed: " + str(e)
+            )
 
     if st.session_state.pdf_text:
 
@@ -324,7 +357,8 @@ with pdf_tab:
         )
 
         pdf_question = st.text_input(
-            "Ask something about this PDF"
+            "Ask something about this PDF",
+            key="nova_pdf_question"
         )
 
         if st.button("Ask NOVA about PDF"):
@@ -335,30 +369,31 @@ with pdf_tab:
 
                     with st.spinner("Reading your PDF..."):
 
-                        result = gemini.models.generate_content(
-                            model="gemini-3.5-flash-lite",
-                            contents=(
-                                "Answer the question using the PDF text. "
-                                "If the answer is not in the PDF, say so.\n\n"
-                                "PDF TEXT:\n"
-                                + st.session_state.pdf_text[:80000]
-                                + "\n\nQUESTION:\n"
-                                + pdf_question
-                            )
+                        pdf_prompt = (
+                            "Answer the question using the PDF text. "
+                            "If the answer is not in the PDF, say so.\n\n"
+                            "PDF TEXT:\n"
+                            + st.session_state.pdf_text[:80000]
+                            + "\n\nQUESTION:\n"
+                            + pdf_question
+                        )
+
+                        answer = generate_with_fallback(
+                            pdf_prompt
                         )
 
                     st.markdown("### NOVA's Answer")
 
-                    st.write(
-                        result.text
-                        or "I could not generate an answer."
-                    )
+                    st.write(answer)
 
                 except Exception as e:
 
                     st.error(
-                        "PDF Assistant error: " + str(e)
+                        "NOVA could not answer from the PDF "
+                        "right now. Please try again later."
                     )
+
+                    st.caption(str(e))
 
         if st.button("Clear PDF"):
 
