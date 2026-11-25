@@ -231,24 +231,21 @@ with chat_tab:
             + conversation
         )
 
-        try:
-
-           with st.chat_message("assistant"):
-
+                try:
+            with st.chat_message("assistant"):
                 with st.spinner("NOVA is thinking..."):
-
-                   
-result= gemini.models.generate_content
+                    result = gemini.models.generate_content(
                         model="gemini-3.8-flash",
-                contents=system_prompt
+                        contents=system_prompt
                     )
+
                     answer = (
                         result.text
                         or "I could not generate a response."
                     )
 
                     st.markdown(answer)
- 
+
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": answer
@@ -268,13 +265,11 @@ result= gemini.models.generate_content
             ]
 
             if any(trigger in lower_prompt for trigger in triggers):
-
                 if save_memory(prompt, "automatic"):
                     st.toast("🧠 NOVA saved this memory!")
 
         except Exception as e:
             st.error("Gemini error: " + str(e))
-
 # ==========================================
 # PDF ASSISTANT
 # ==========================================
