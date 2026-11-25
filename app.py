@@ -204,13 +204,11 @@ with chat_tab:
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Prepare memory context
         memory_context = "\n".join(
             memory["content"]
             for memory in st.session_state.memories
         )
 
-        # Use recent conversation for context
         history = st.session_state.messages[-20:]
 
         conversation = "\n".join(
@@ -232,12 +230,14 @@ with chat_tab:
         )
 
         try:
-            with st.chat_message("assistant"):
-                with st.spinner("NOVA is thinking..."):
-                    result = gemini.models.generate_content(
-                        gemini-3.5-flash-lite                       
 
-contents=system_prompt
+            with st.chat_message("assistant"):
+
+                with st.spinner("NOVA is thinking..."):
+
+                    result = gemini.models.generate_content(
+                        model="gemini-3.5-flash-lite",
+                        contents=system_prompt
                     )
 
                     answer = (
@@ -254,7 +254,6 @@ contents=system_prompt
 
             save_browser_data()
 
-            # Automatic memory trigger
             lower_prompt = prompt.lower()
 
             triggers = [
@@ -266,10 +265,12 @@ contents=system_prompt
             ]
 
             if any(trigger in lower_prompt for trigger in triggers):
+
                 if save_memory(prompt, "automatic"):
                     st.toast("🧠 NOVA saved this memory!")
 
         except Exception as e:
+
             st.error("Gemini error: " + str(e))
 # ==========================================
 # PDF ASSISTANT
@@ -289,7 +290,7 @@ with pdf_tab:
         try:
 
             document = fitz.open(
-                stream=uploaded_pdf.read(),
+                stream=uploaded_pdf.getvalue(),
                 filetype="pdf"
             )
 
@@ -308,15 +309,18 @@ with pdf_tab:
             else:
 
                 st.session_state.pdf_text = extracted_text
+
                 st.success("PDF uploaded and text extracted.")
 
         except Exception as e:
+
             st.error("PDF reading failed: " + str(e))
 
     if st.session_state.pdf_text:
 
         st.caption(
-            f"Extracted text: {len(st.session_state.pdf_text)} characters"
+            f"Extracted text: "
+            f"{len(st.session_state.pdf_text)} characters"
         )
 
         pdf_question = st.text_input(
@@ -332,10 +336,8 @@ with pdf_tab:
                     with st.spinner("Reading your PDF..."):
 
                         result = gemini.models.generate_content(
-                            
- gemini-3.5-flash-lite                           
-
-contents=(
+                            model="gemini-3.5-flash-lite",
+                            contents=(
                                 "Answer the question using the PDF text. "
                                 "If the answer is not in the PDF, say so.\n\n"
                                 "PDF TEXT:\n"
@@ -346,15 +348,23 @@ contents=(
                         )
 
                     st.markdown("### NOVA's Answer")
-                    st.write(result.text)
+
+                    st.write(
+                        result.text
+                        or "I could not generate an answer."
+                    )
 
                 except Exception as e:
-                    st.error("PDF Assistant error: " + str(e))
+
+                    st.error(
+                        "PDF Assistant error: " + str(e)
+                    )
 
         if st.button("Clear PDF"):
-            st.session_state.pdf_text = ""
-            st.rerun()
 
+            st.session_state.pdf_text = ""
+
+            st.rerun()
 # ==========================================
 # FOOTER
 # ==========================================
