@@ -32,32 +32,37 @@ gemini = genai.Client(api_key=GEMINI_API_KEY)
 # GEMINI AUTO FALLBACK
 # ==========================================
 
+import time
+
 GEMINI_MODELS = [
-    "gemini-3.8-flash",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
+    "gemini-3.8-flash",
 ]
 
 def generate_with_fallback(contents):
     errors = []
 
     for model_name in GEMINI_MODELS:
-        try:
-            result = gemini.models.generate_content(
-                model=model_name,
-                contents=contents
-            )
+        for attempt in range(2):
+            try:
+                result = gemini.models.generate_content(
+                    model=model_name,
+                    contents=contents
+                )
 
-            if result.text:
-                return result.text
+                if result.text:
+                    return result.text
 
-            errors.append(f"{model_name}: Empty response")
+                errors.append(f"{model_name}: Empty response")
+                break
 
-        except Exception as e:
-            errors.append(f"{model_name}: {str(e)}")
+            except Exception as e:
+                errors.append(f"{model_name}: {str(e)}")
+                time.sleep(2 + attempt * 3)
 
     raise RuntimeError(
-        "All Gemini models failed. " + " | ".join(errors)
+        "All models failed. " + " | ".join(errors)
     )
 # ==========================================
 # BROWSER LOCAL STORAGE
