@@ -235,8 +235,9 @@ with chat_tab:
             with st.chat_message("assistant"):
                 with st.spinner("NOVA is thinking..."):
                     result = gemini.models.generate_content(
-                        model="gemini-3.8-flash",
-                        contents=system_prompt
+                        gemini-3.5-flash-lite                       
+
+contents=system_prompt
                     )
 
                     answer = (
@@ -331,8 +332,10 @@ with pdf_tab:
                     with st.spinner("Reading your PDF..."):
 
                         result = gemini.models.generate_content(
-                            model="gemini-3.8-flash",
-                            contents=(
+                            
+ gemini-3.5-flash-lite                           
+
+contents=(
                                 "Answer the question using the PDF text. "
                                 "If the answer is not in the PDF, say so.\n\n"
                                 "PDF TEXT:\n"
