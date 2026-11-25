@@ -28,7 +28,12 @@ except Exception:
     st.stop()
 
 gemini = genai.Client(api_key=GEMINI_API_KEY)
-# ==========================================
+
+openai_client = OpenAI(
+    api_key=st.secrets["OPENAI_API_KEY"]
+)
+#
+==========================================
 # GEMINI AUTO FALLBACK
 # ==========================================
 
