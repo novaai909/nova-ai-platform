@@ -5,3 +5,4 @@ google-genai
 supabase==2.34.1
 streamlit-cookies-manager
 streamlit-local-storage
+openai
