@@ -233,7 +233,7 @@ with chat_tab:
 
         try:
 
-            with st.chat_message("assistant"):
+           with st.chat_message("assistant"):
 
                 with st.spinner("NOVA is thinking..."):
 
@@ -248,7 +248,7 @@ result= gemini.models.generate_content
                     )
 
                     st.markdown(answer)
-
+ 
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": answer
