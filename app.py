@@ -416,4 +416,4 @@ with pdf_tab:
 # ==========================================
 
 st.divider()
-st.caption("NOVA AI • Your Personal AI Assistant ✨") 
+st.caption("NOVA AI • Your Personal AI Assistant ✨")
