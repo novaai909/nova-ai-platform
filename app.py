@@ -231,7 +231,7 @@ with chat_tab:
             + conversation
         )
 
-                try:
+        try:
             with st.chat_message("assistant"):
                 with st.spinner("NOVA is thinking..."):
                     result = gemini.models.generate_content(
@@ -268,7 +268,7 @@ with chat_tab:
                 if save_memory(prompt, "automatic"):
                     st.toast("🧠 NOVA saved this memory!")
 
-       except Exception as e:
+        except Exception as e:
             st.error("Gemini error: " + str(e))
 # ==========================================
 # PDF ASSISTANT
