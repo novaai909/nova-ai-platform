@@ -124,7 +124,7 @@ def delete_memory(memory_id):
 # HEADER
 # ==========================================
 
-st.title("✨ NOVA AI")
+st.title("✨ PAI AI🔥")
 st.caption("Your Personal AI Assistant • Always Here for You")
 
 # ==========================================
