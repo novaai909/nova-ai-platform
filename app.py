@@ -1,11 +1,11 @@
 
 import streamlit as st
 import fitz
-import json
 import uuid
+import base64
 from datetime import datetime
 from google import genai
-from streamlit_local_storage import LocalStorage
+from openai import OpenAI
 
 # ==========================================
 # PAGE CONFIG
@@ -18,80 +18,64 @@ st.set_page_config(
 )
 
 # ==========================================
-# GEMINI API
+# API SETUP
 # ==========================================
 
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+    gemini = genai.Client(api_key=GEMINI_API_KEY)
 except Exception:
-    st.error("GEMINI_API_KEY missing in Streamlit Secrets.")
+    st.error("GEMINI_API_KEY missing in Secrets.")
     st.stop()
 
-gemini = genai.Client(api_key=GEMINI_API_KEY)
+openai_client = None
 
-from openai import OpenAI
+try:
+    if st.secrets.get("OPENAI_API_KEY"):
+        openai_client = OpenAI(
+            api_key=st.secrets["OPENAI_API_KEY"]
+        )
+except Exception:
+    openai_client = None
 
-openai_client = OpenAI(
-    api_key=st.secrets["OPENAI_API_KEY"]
-)
-# ========================================== 
-# GEMINI AUTO FALLBACK
+# ==========================================
+# GEMINI TEXT GENERATION
 # ==========================================
 
-import time
-
 GEMINI_MODELS = [
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-3.8-flash",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite"
 ]
 
 def generate_with_fallback(contents):
+
     errors = []
 
     for model_name in GEMINI_MODELS:
-        for attempt in range(2):
-            try:
-                result = gemini.models.generate_content(
-                    model=model_name,
-                    contents=contents
-                )
 
-                if result.text:
-                    return result.text
+        try:
 
-                errors.append(f"{model_name}: Empty response")
-                break
+            result = gemini.models.generate_content(
+                model=model_name,
+                contents=contents
+            )
 
-            except Exception as e:
-                errors.append(f"{model_name}: {str(e)}")
-                time.sleep(2 + attempt * 3)
+            if result.text:
+                return result.text
+
+        except Exception as e:
+
+            errors.append(
+                model_name + ": " + str(e)
+            )
 
     raise RuntimeError(
-        "All models failed. " + " | ".join(errors)
+        "Gemini failed: " + " | ".join(errors)
     )
+
 # ==========================================
-# BROWSER LOCAL STORAGE
+# SESSION STATE
 # ==========================================
-
-localS = LocalStorage()
-STORAGE_KEY = "nova_ai_saved_data"
-
-if "storage_loaded" not in st.session_state:
-    saved_data = localS.getItem(STORAGE_KEY)
-
-    if isinstance(saved_data, str):
-        try:
-            saved_data = json.loads(saved_data)
-        except Exception:
-            saved_data = {}
-
-    if not isinstance(saved_data, dict):
-        saved_data = {}
-
-    st.session_state.messages = saved_data.get("messages", [])
-    st.session_state.memories = saved_data.get("memories", [])
-    st.session_state.storage_loaded = True
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -103,34 +87,19 @@ if "pdf_text" not in st.session_state:
     st.session_state.pdf_text = ""
 
 # ==========================================
-# SAVE DATA
-# ==========================================
-
-def save_browser_data():
-    data = {
-        "messages": st.session_state.messages,
-        "memories": st.session_state.memories
-    }
-
-    localS.setItem(
-        STORAGE_KEY,
-        json.dumps(data, ensure_ascii=False)
-    )
-
-
-# ==========================================
 # MEMORY FUNCTIONS
 # ==========================================
 
 def save_memory(content, memory_type="manual"):
+
     content = content.strip()
 
     if not content:
         return False
 
-    # Avoid duplicate memories
     for memory in st.session_state.memories:
-        if memory.get("content", "").lower() == content.lower():
+
+        if memory["content"].lower() == content.lower():
             return False
 
     st.session_state.memories.insert(0, {
@@ -140,17 +109,16 @@ def save_memory(content, memory_type="manual"):
         "created_at": datetime.now().isoformat()
     })
 
-    save_browser_data()
     return True
 
 
 def delete_memory(memory_id):
-    st.session_state.memories = [
-        memory for memory in st.session_state.memories
-        if memory.get("id") != memory_id
-    ]
-    save_browser_data()
 
+    st.session_state.memories = [
+        memory
+        for memory in st.session_state.memories
+        if memory["id"] != memory_id
+    ]
 
 # ==========================================
 # HEADER
@@ -167,56 +135,77 @@ with st.sidebar:
 
     st.title("🧠 NOVA Memory")
 
-    st.caption("NOVA can remember important things about you.")
-
     memory_input = st.text_area(
         "What should NOVA remember?",
-        placeholder="Example: I love learning new technology."
+        placeholder="Example: I love learning technology.",
+        key="nova_memory_input"
     )
 
-    if st.button("Save Memory", use_container_width=True):
+    if st.button(
+        "Save Memory",
+        key="nova_save_memory",
+        use_container_width=True
+    ):
+
         if save_memory(memory_input):
             st.success("Memory saved!")
             st.rerun()
         else:
-            st.info("This memory is empty or already saved.")
+            st.info("Empty or duplicate memory.")
 
     st.divider()
-    st.subheader("Your Saved Memories")
+
+    st.subheader("Saved Memories")
 
     if st.session_state.memories:
+
         for memory in st.session_state.memories:
 
             with st.expander(
-                memory.get("content", "Saved memory")[:45]
+                memory["content"][:45],
+                key="memory_exp_" + memory["id"]
             ):
-                st.write(memory.get("content", ""))
+
+                st.write(memory["content"])
 
                 if st.button(
                     "Delete Memory",
-                    key="delete_" + memory["id"]
+                    key="memory_del_" + memory["id"]
                 ):
+
                     delete_memory(memory["id"])
                     st.rerun()
+
     else:
+
         st.caption("No memories saved yet.")
 
     st.divider()
 
-    if st.button("Clear Chat History", use_container_width=True):
+    if st.button(
+        "Clear Chat History",
+        key="nova_clear_chat"
+    ):
+
         st.session_state.messages = []
-        save_browser_data()
         st.rerun()
 
-    st.caption("Memories remain saved when chat history is cleared.")
+    if st.button(
+        "Clear All Memories",
+        key="nova_clear_memories"
+    ):
+
+        st.session_state.memories = []
+        st.rerun()
 
 # ==========================================
 # TABS
 # ==========================================
 
-chat_tab, pdf_tab = st.tabs([
+chat_tab, pdf_tab, photo_tab = st.tabs([
     "💬 AI Chat",
-    "📄 PDF Assistant"
+    "📄 PDF Assistant",
+    "🎨 Photo Editor"
 ])
 
 # ==========================================
@@ -228,10 +217,14 @@ with chat_tab:
     st.subheader("Chat with NOVA")
 
     for message in st.session_state.messages:
+
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    prompt = st.chat_input("Ask NOVA anything...")
+    prompt = st.chat_input(
+        "Ask NOVA anything...",
+        key="nova_chat_input"
+    )
 
     if prompt:
 
@@ -239,8 +232,6 @@ with chat_tab:
             "role": "user",
             "content": prompt
         })
-
-        save_browser_data()
 
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -258,16 +249,13 @@ with chat_tab:
         )
 
         system_prompt = (
-            "You are NOVA AI, a friendly and helpful personal assistant. "
-            "Speak naturally in the language the user uses. "
-            "Use saved memories when relevant. "
-            "Never pretend to remember information that is not provided. "
-            "If the user asks you to remember something, acknowledge it. "
-            "Do not claim a memory was saved unless the app confirms it.\n\n"
-            "USER MEMORIES:\n"
-            + memory_context
-            + "\n\nRECENT CONVERSATION:\n"
-            + conversation
+            "You are NOVA AI, a friendly and helpful assistant. "
+            "Speak naturally in the language used by the user. "
+            "Use memories when relevant. "
+            "Never pretend to remember unavailable information. "
+            "Never claim to save memories unless the app confirms it.\n\n"
+            "USER MEMORIES:\n" + memory_context +
+            "\n\nRECENT CONVERSATION:\n" + conversation
         )
 
         try:
@@ -280,16 +268,12 @@ with chat_tab:
                         system_prompt
                     )
 
-                    st.markdown(answer)
+                st.markdown(answer)
 
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": answer
             })
-
-            save_browser_data()
-
-            lower_prompt = prompt.lower()
 
             triggers = [
                 "remember that",
@@ -299,30 +283,31 @@ with chat_tab:
                 "याद रखना"
             ]
 
-            if any(trigger in lower_prompt for trigger in triggers):
+            if any(
+                trigger in prompt.lower()
+                for trigger in triggers
+            ):
 
                 if save_memory(prompt, "automatic"):
-                    st.toast("🧠 NOVA saved this memory!")
+                    st.toast("🧠 Memory saved!")
 
         except Exception as e:
 
-            st.error(
-                "NOVA could not respond right now. "
-                "Please try again later."
-            )
-
+            st.error("NOVA could not respond right now.")
             st.caption(str(e))
+
 # ==========================================
 # PDF ASSISTANT
 # ==========================================
 
 with pdf_tab:
 
-    st.subheader("Ask questions about your PDF")
+    st.subheader("📄 Ask Questions About Your PDF")
 
     uploaded_pdf = st.file_uploader(
         "Upload a PDF file",
-        type=["pdf"]
+        type=["pdf"],
+        key="nova_pdf_upload"
     )
 
     if uploaded_pdf:
@@ -330,7 +315,7 @@ with pdf_tab:
         try:
 
             document = fitz.open(
-                stream=uploaded_pdf.read(),
+                stream=uploaded_pdf.getvalue(),
                 filetype="pdf"
             )
 
@@ -339,32 +324,29 @@ with pdf_tab:
                 for page in document
             )
 
-            if not extracted_text.strip():
-
-                st.warning(
-                    "No readable text found. "
-                    "This may be a scanned PDF."
-                )
-
-            else:
+            if extracted_text.strip():
 
                 st.session_state.pdf_text = extracted_text
 
-                st.success(
-                    "PDF uploaded and text extracted."
+                st.success("PDF text extracted successfully!")
+
+            else:
+
+                st.warning(
+                    "No readable text found in this PDF."
                 )
 
         except Exception as e:
 
-            st.error(
-                "PDF reading failed: " + str(e)
-            )
+            st.error("PDF reading failed.")
+            st.caption(str(e))
 
     if st.session_state.pdf_text:
 
         st.caption(
-            f"Extracted text: "
-            f"{len(st.session_state.pdf_text)} characters"
+            "Extracted text: "
+            + str(len(st.session_state.pdf_text))
+            + " characters"
         )
 
         pdf_question = st.text_input(
@@ -372,48 +354,145 @@ with pdf_tab:
             key="nova_pdf_question"
         )
 
-        if st.button("Ask NOVA about PDF"):
+        if st.button(
+            "Ask NOVA about PDF",
+            key="nova_pdf_ask"
+        ):
 
             if pdf_question.strip():
 
+                pdf_prompt = (
+                    "Answer using the PDF text. "
+                    "If the answer is not in the PDF, say so.\n\n"
+                    "PDF TEXT:\n"
+                    + st.session_state.pdf_text[:80000]
+                    + "\n\nQUESTION:\n"
+                    + pdf_question
+                )
+
                 try:
 
-                    with st.spinner("Reading your PDF..."):
-
-                        pdf_prompt = (
-                            "Answer the question using the PDF text. "
-                            "If the answer is not in the PDF, say so.\n\n"
-                            "PDF TEXT:\n"
-                            + st.session_state.pdf_text[:80000]
-                            + "\n\nQUESTION:\n"
-                            + pdf_question
-                        )
+                    with st.spinner("Reading PDF..."):
 
                         answer = generate_with_fallback(
                             pdf_prompt
                         )
 
                     st.markdown("### NOVA's Answer")
-
                     st.write(answer)
 
                 except Exception as e:
 
-                    st.error(
-                        "NOVA could not answer from the PDF "
-                        "right now. Please try again later."
-                    )
-
+                    st.error("PDF response failed.")
                     st.caption(str(e))
 
-        if st.button("Clear PDF"):
+        if st.button(
+            "Clear PDF",
+            key="nova_pdf_clear"
+        ):
 
             st.session_state.pdf_text = ""
-
             st.rerun()
+
+# ==========================================
+# AI PHOTO EDITOR
+# ==========================================
+
+with photo_tab:
+
+    st.subheader("🎨 NOVA AI Photo Editor")
+
+    st.caption(
+        "Upload a photo and tell NOVA how you want to edit it."
+    )
+
+    photo_file = st.file_uploader(
+        "Upload your photo",
+        type=["png", "jpg", "jpeg", "webp"],
+        key="nova_photo_upload"
+    )
+
+    if photo_file:
+
+        st.image(
+            photo_file,
+            caption="Original Photo",
+            use_container_width=True
+        )
+
+        edit_prompt = st.text_area(
+            "Describe your photo edit",
+            placeholder=(
+                "Example: Change the background to a beach "
+                "at sunset and add cinematic lighting."
+            ),
+            key="nova_photo_edit_prompt"
+        )
+
+        if st.button(
+            "✨ Edit My Photo",
+            key="nova_photo_edit"
+        ):
+
+            if not edit_prompt.strip():
+
+                st.warning("Please enter an editing prompt.")
+
+            elif openai_client is None:
+
+                st.error(
+                    "OPENAI_API_KEY is missing in Streamlit Secrets."
+                )
+
+            else:
+
+                try:
+
+                    with st.spinner(
+                        "NOVA is editing your photo... ✨"
+                    ):
+
+                        result = openai_client.images.edit(
+                            model="gpt-image-2.6-flare",
+                            image=(
+                                photo_file.name,
+                                photo_file.getvalue(),
+                                photo_file.type
+                            ),
+                            prompt=edit_prompt
+                        )
+
+                        edited_bytes = base64.b64decode(
+                            result.data[0].b64_json
+                        )
+
+                    st.success("Photo edited successfully!")
+
+                    st.image(
+                        edited_bytes,
+                        caption="NOVA AI Edited Photo",
+                        use_container_width=True
+                    )
+
+                    st.download_button(
+                        "⬇️ Download Edited Photo",
+                        data=edited_bytes,
+                        file_name="nova_edited_photo.png",
+                        mime="image/png",
+                        key="nova_photo_download"
+                    )
+
+                except Exception as e:
+
+                    st.error("Photo editing failed.")
+                    st.caption(str(e))
+
 # ==========================================
 # FOOTER
 # ==========================================
 
 st.divider()
-st.caption("NOVA AI • Your Personal AI Assistant ✨") 
+
+st.caption(
+    "NOVA AI • Your Personal AI Assistant ✨"
+)
