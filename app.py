@@ -2,7 +2,8 @@
 import streamlit as st
 import uuid, ast, fitz, hashlib, json
 import streamlit.components.v1 as components
-from google import genai, types
+import google.genai as genai
+from google.genai import types
 from openai import OpenAI
 from supabase import create_client
 
