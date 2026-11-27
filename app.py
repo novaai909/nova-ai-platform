@@ -150,7 +150,7 @@ elif feature=='💬 AI Chat':
  for idx,m in enumerate(history):
   with st.chat_message(m.get('role','assistant')):
    st.markdown(m.get('content',''));st.caption(m.get('provider',''))
-   if m.get('role')=='assistant' and m.get('content','').strip()
+   if m.get('role')=='assistant' and m.get('content','').strip():
     speech_text=json.dumps(m.get('content',''))
     speak_html='''<button id="speakBtn" style="background:#251144;color:white;border:1px solid #9b72ed;border-radius:12px;padding:9px 14px;font-size:15px;cursor:pointer">🔊 Listen to NOVA's answer</button><button id="stopBtn" style="background:#20172b;color:white;border:1px solid #9b72ed;border-radius:12px;padding:9px 14px;font-size:15px;cursor:pointer">⏹ Stop audio</button><script>const txt=TEXT;function langFor(t){return /[\u0900-\u097F]/.test(t)?'hi-IN':'en-GB'}document.getElementById('speakBtn').onclick=()=>{speechSynthesis.cancel();let u=new SpeechSynthesisUtterance(txt);u.lang=langFor(txt);u.rate=.90;u.pitch=.92;u.volume=1;let vs=speechSynthesis.getVoices()||[],cs=vs.filter(v=>v.lang.toLowerCase().startsWith(u.lang.startsWith('hi')?'hi':'en')),hs=['male','david','daniel','george','james','alex','thomas','aaron','fred','lee','rishi'];let mv=cs.find(v=>hs.some(h=>v.name.toLowerCase().includes(h)));if(mv)u.voice=mv;else if(cs.length)u.voice=cs[0];speechSynthesis.speak(u)};document.getElementById('stopBtn').onclick=()=>speechSynthesis.cancel();</script>'''.replace('TEXT',speech_text)
     components.html(speak_html,height=55)
