@@ -583,3 +583,128 @@ if feature == "💬 AI Chat":
             font-size:16px;cursor:pointer;width:100%;margin-top:8px;">
             ⏹️ Stop Voice
             </b
+            <script>
+            const novaText = {speech_text};
+
+            function speakNOVA(){{
+                window.speechSynthesis.cancel();
+
+                const speech = new SpeechSynthesisUtterance(novaText);
+                speech.lang = "en-US";
+                speech.rate = 1;
+                speech.pitch = 1;
+
+                window.speechSynthesis.speak(speech);
+            }}
+
+            function stopNOVA(){{
+                window.speechSynthesis.cancel();
+            }}
+            </script>
+            """,
+            height=120
+        )
+
+elif feature == "📄 PDF Assistant":
+    uploaded = st.file_uploader("Upload PDF", type=["pdf"])
+
+    if uploaded:
+        document = fitz.open(
+            stream=uploaded.read(),
+            filetype="pdf"
+        )
+
+        pdftext = "\n".join(
+            page.get_text() for page in document
+        )
+
+        st.success(f"PDF loaded: {len(document)} pages")
+
+        question = st.text_input("Ask about the PDF")
+
+        if st.button("Ask NOVA") and question:
+            answer, provider = ask(
+                "Answer using this document:\n"
+                + pdftext[:30000]
+                + "\nQuestion: "
+                + question
+            )
+
+            st.markdown(answer)
+            st.caption(provider)
+
+elif feature == "✍️ Writing Studio":
+    task = st.selectbox(
+        "Task",
+        ["Write","Rewrite","Summarize","Translate","Email","Ideas"]
+    )
+
+    text = st.text_area("Text or instructions", height=200)
+
+    tone = st.selectbox(
+        "Tone",
+        ["Friendly","Professional","Creative","Simple","Formal"]
+    )
+
+    if st.button("Generate") and text:
+        answer, provider = ask(
+            f"{task} this in a {tone} tone:\n{text}"
+        )
+
+        st.markdown(answer)
+        st.caption(provider)
+
+elif feature == "🧠 My Notes":
+    note = st.text_area("Write a note", key="note")
+
+    if st.button("Save note") and note.strip():
+        st.session_state.notes.append({
+            "id":str(uuid.uuid4()),
+            "text":note.strip()
+        })
+
+        save()
+        st.rerun()
+
+    st.markdown("### Saved notes")
+
+    for n in list(st.session_state.notes):
+        with st.container(border=True):
+            st.write(n.get("text", ""))
+
+            if st.button("🗑️ Delete note", key="del_"+n.get("id", "")):
+                st.session_state.notes = [
+                    x for x in st.session_state.notes
+                    if x.get("id") != n.get("id")
+                ]
+
+                save()
+                st.rerun()
+
+elif feature == "🧮 Calculator":
+    expr = st.text_input("Calculation (e.g. 2*(3+4))")
+
+    if st.button("Calculate"):
+        try:
+            tree = ast.parse(expr, mode="eval")
+
+            allowed = (
+                ast.Expression, ast.Constant, ast.BinOp, ast.UnaryOp,
+                ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv,
+                ast.Mod, ast.Pow, ast.USub, ast.UAdd, ast.Load
+            )
+
+            if all(isinstance(n, allowed) for n in ast.walk(tree)):
+                result = eval(
+                    compile(tree, "<calc>", "eval"),
+                    {"__builtins__":{}},
+                    {}
+                )
+
+                st.success("Result: " + str(result))
+
+            else:
+                st.error("Unsupported calculation.")
+
+        except Exception:
+            st.error("Invalid calculation.")
