@@ -159,7 +159,15 @@ for idx,m in enumerate(history):
     speak_html='''<button id="speakBtn" style="background:#251144;color:white;border:1px solid #9b72ed;border-radius:12px;padding:9px 14px;font-size:15px;cursor:pointer">🔊 Listen to NOVA's answer</button><button id="stopBtn" style="background:#20172b;color:white;border:1px solid #9b72ed;border-radius:12px;padding:9px 14px;font-size:15px;cursor:pointer">⏹ Stop audio</button><script>const txt=TEXT;function langFor(t){return /[\u0900-\u097F]/.test(t)?'hi-IN':'en-GB'}document.getElementById('speakBtn').onclick=()=>{speechSynthesis.cancel();let u=new SpeechSynthesisUtterance(txt);u.lang=langFor(txt);u.rate=.90;u.pitch=.92;u.volume=1;let vs=speechSynthesis.getVoices()||[],cs=vs.filter(v=>v.lang.toLowerCase().startsWith(u.lang.startsWith('hi')?'hi':'en')),hs=['male','david','daniel','george','james','alex','thomas','aaron','fred','lee','rishi'];let mv=cs.find(v=>hs.some(h=>v.name.toLowerCase().includes(h)));if(mv)u.voice=mv;else if(cs.length)u.voice=cs[0];speechSynthesis.speak(u)};document.getElementById('stopBtn').onclick=()=>speechSynthesis.cancel();</script>'''.replace('TEXT',speech_text)
     components.html(speak_html,height=105,scrolling=False)
  # Chat input row: Send + yellow live-conversation launch icon.
- latest_reply=next((m.get('content','') for m in reversed(history) if m.get('role')=='assistant' and m.get('content','').strip()),'')
+     latest_reply = next(
+        (
+            m.get("content", "")
+            for m in reversed(history)
+            if m.get("role") == "assistant"
+            and m.get("content", "").strip()
+        ),
+        ""
+    )
  c_input,c_send,c_conversation=st.columns([7,1,1],gap='small')
  with c_input:
   prompt=st.text_input('Ask NOVA AI anything…',key='nova_chat_prompt',label_visibility='collapsed',placeholder='Ask NOVA AI anything…')
