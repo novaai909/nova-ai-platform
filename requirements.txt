@@ -1,9 +1,8 @@
-
 streamlit
 PyMuPDF
-google-genai
+google-genai>=1.0.0
 supabase==2.34.1
 streamlit-cookies-manager
 streamlit-local-storage
-openai 
-pillow 
+openai
+pillow
