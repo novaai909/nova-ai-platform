@@ -15,7 +15,7 @@ st.markdown('''<style>
 .entry-panel{text-align:center;padding:25px;border:1px solid #a855f7;border-radius:25px;background:linear-gradient(135deg,#180c32,#071a45);box-shadow:0 0 30px #7c3aed55}
 </style>''', unsafe_allow_html=True)
 
-try:
+try: 
 gc=genai.Client(api_key=st.secrets['GEMINI_API_KEY'])
 except Exception: st.error('Gemini setup error: check GEMINI_API_KEY'); st.stop()
 try: db=create_client(st.secrets['SUPABASE_URL'],st.secrets['SUPABASE_KEY'])
