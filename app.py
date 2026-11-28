@@ -225,19 +225,46 @@ elif feature=='🌐 AI Web Search':
                 st.markdown(ans); st.caption(prov)
 
 elif feature=='🌍 Translator':
-    st.markdown('## 🌍 NOVA Translator'); langs=['Hindi','English','Urdu','Punjabi','Bengali','Gujarati','Marathi','Tamil','Telugu','Kannada','Malayalam','French','Spanish','German','Arabic','Japanese','Chinese (Simplified)','Russian','Portuguese','Korean','Italian','Nepali']
-    c1,c2=st.columns(2)
-    with c1: source=st.selectbox('Translate from',['Auto-detect']+langs)
-    with c2: target=st.selectbox('Translate to',langs,index=1)
-    original=st.text_area('Text to translate',height=180)
+    st.markdown('## 🌍 NOVA Translator')
+    langs = ['Hindi','English','Urdu','Punjabi','Bengali','Gujarati','Marathi','Tamil','Telugu','Kannada','Malayalam','French','Spanish','German','Arabic','Japanese','Chinese (Simplified)','Russian','Portuguese','Korean','Italian','Nepali']
+
+    c1, c2 = st.columns(2)
+    with c1:
+        source = st.selectbox('Translate from', ['Auto-detect'] + langs)
+    with c2:
+        target = st.selectbox('Translate to', langs, index=1)
+
+    original = st.text_area('Text to translate', height=180)
+
     if st.button('🌐 Translate'):
-        if not original.strip(): st.warning('Enter text first.')
-        elif source==target: st.warning('Choose different languages.')
+        if not original.strip():
+            st.warning('Enter text first.')
+        elif source == target:
+            st.warning('Choose different languages.')
         else:
-            with st.spinner('Translating…'): translation,provider=ai(f'Translate into {target} from {source}. Preserve tone, meaning and formatting. Output only translation.\\n\\n{original}')
-st.session_state.translation=translation; st.session_state.translation_provider=provider
+            with st.spinner('Translating…'):
+                translation, provider = ai(
+                    f'Translate into {target} from {source}. '
+                    f'Preserve tone, meaning and formatting. '
+                    f'Output only translation.\n\n{original}'
+                )
+            st.session_state.translation = translation
+            st.session_state.translation_provider = provider
+
     if st.session_state.get('translation'):
-        st.markdown('### Translation'); st.text_area('Translated output',value=st.session_state.translation,height=180,key='translation_view'); st.caption(st.session_state.get('translation_provider','')); st.download_button('⬇️ Download translation',st.session_state.translation,file_name='nova_translation.txt')
+        st.markdown('### Translation')
+        st.text_area(
+            'Translated output',
+            value=st.session_state.translation,
+            height=180,
+            key='translation_view'
+        )
+        st.caption(st.session_state.get('translation_provider', ''))
+        st.download_button(
+            '⬇️ Download translation',
+            st.session_state.translation,
+            file_name='nova_translation.txt'
+        )
 
 elif feature=='🎓 AI Study Mode':
     st.markdown('## 🎓 NOVA Study Mode'); st.write('Explanation, revision notes, quizzes, flashcards and step-by-step learning.')
