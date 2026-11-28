@@ -8,3 +8,6 @@ openai
 pillow 
 requests
 beautifulsoup4
+streamlit-webrtc
+av
+numpy
