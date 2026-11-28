@@ -175,7 +175,7 @@ elif feature=='🧠 My Notes':
         with st.expander('📌 '+note.get('title','Untitled')):
             st.write(note.get('content','')); st.caption(note.get('date','')); st.download_button('Download
 note',note.get('content',''),file_name=f'note_{i+1}.txt',key='note_download_'+str(i))
-            if st.button('Delete note',key='note_delete_'+str(i)): st.session_state.notes.pop(i); save_data(); st.rerun()
+            if st.button('Delete note',key='note_delete_'+str(i)): st.session_state.notes.pop(i); save_data(); st.rerun() 
 
 elif feature=='🧮 Calculator':
     a=st.number_input('First number',value=0.0); op=st.selectbox('Operation',['+','-','×','÷','%']); b=st.number_input('Second number',value=1.0)
