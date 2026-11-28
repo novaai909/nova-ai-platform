@@ -7,3 +7,4 @@ streamlit-local-storage
 openai
 pillow 
 requests
+beautifulsoup4
