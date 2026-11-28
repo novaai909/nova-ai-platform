@@ -172,10 +172,19 @@ elif feature=='🧠 My Notes':
         if note_title.strip() and note_body.strip(): st.session_state.notes.append({'title':note_title,'content':note_body,'date':datetime.now().strftime('%d-%m-%Y %H:%M')}); save_data(); st.rerun()
         else: st.warning('Fill in both fields.')
     for i,note in enumerate(st.session_state.notes):
-        with st.expander('📌 '+note.get('title','Untitled')):
-            st.write(note.get('content','')); st.caption(note.get('date','')); st.download_button('Download
-note',note.get('content',''),file_name=f'note_{i+1}.txt',key='note_download_'+str(i))
-            if st.button('Delete note',key='note_delete_'+str(i)): st.session_state.notes.pop(i); save_data(); st.rerun() 
+    with st.expander('📌 '+note.get('title','Untitled')):
+        st.write(note.get('content',''))
+        st.caption(note.get('date',''))
+        st.download_button(
+            'Download note',
+            note.get('content',''),
+            file_name=f'note_{i+1}.txt',
+            key='note_download_'+str(i)
+        )
+        if st.button('Delete note',key='note_delete_'+str(i)):
+            st.session_state.notes.pop(i)
+            save_data()
+            st.rerun()
 
 elif feature=='🧮 Calculator':
     a=st.number_input('First number',value=0.0); op=st.selectbox('Operation',['+','-','×','÷','%']); b=st.number_input('Second number',value=1.0)
