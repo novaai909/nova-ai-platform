@@ -6,4 +6,4 @@ streamlit-cookies-manager
 streamlit-local-storage
 openai
 pillow 
-request 
+requests
